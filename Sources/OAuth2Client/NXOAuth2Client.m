@@ -429,6 +429,45 @@ NSString * const NXOAuth2ClientConnectionContextTokenRefresh = @"tokenRefresh";
     authConnection.context = NXOAuth2ClientConnectionContextTokenRequest;
 }
 
+// User Password Flow Only - External Provider
+- (void)authenticateFromExternalProviderWithToken:(NSString *)token
+{
+    NSAssert1(!authConnection, @"authConnection already running with: %@", authConnection);
+    
+    NSMutableURLRequest *tokenRequest = [NSMutableURLRequest requestWithURL:tokenURL];
+    [tokenRequest setHTTPMethod:self.tokenRequestHTTPMethod];
+    [authConnection cancel];  // just to be sure
+    
+    self.authenticating = YES;
+    
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                       @"external", @"grant_type",
+                                       clientId, @"client_id",
+                                       clientSecret, @"client_secret",
+                                       @"Facebook", @"external_provider",
+                                       token,@"external_token",
+                                       nil];
+    if (self.desiredScope) {
+        [parameters setObject:[[self.desiredScope allObjects] componentsJoinedByString:@" "] forKey:@"scope"];
+    }
+    
+    if (self.additionalAuthenticationParameters) {
+        [parameters addEntriesFromDictionary:self.additionalAuthenticationParameters];
+    }
+    
+    if (self.customHeaderFields) {
+        [self.customHeaderFields enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *obj, BOOL *stop) {
+            [tokenRequest addValue:obj forHTTPHeaderField:key];
+        }];
+    }
+    
+    authConnection = [[NXOAuth2Connection alloc] initWithRequest:tokenRequest
+                                               requestParameters:parameters
+                                                     oauthClient:self
+                                                        delegate:self];
+    authConnection.context = NXOAuth2ClientConnectionContextTokenRequest;
+}
+
 // Assertion
 - (void)authenticateWithAssertionType:(NSURL *)anAssertionType assertion:(NSString *)anAssertion;
 {
