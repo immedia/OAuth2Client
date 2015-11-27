@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name     = 'NXOAuth2Client-immedia'
-  s.version  = '1.2.8'
+  s.version  = '1.2.8.1'
   s.license  = {
     :type => 'BSD',
     :text => <<-LICENSETEXT

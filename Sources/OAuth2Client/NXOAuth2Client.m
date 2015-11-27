@@ -611,14 +611,25 @@ NSString * const NXOAuth2ClientConnectionContextTokenRefresh = @"tokenRefresh";
 {
     NSString *body = [[NSString alloc] initWithData:connection.data encoding:NSUTF8StringEncoding];
     NSLog(@"oauthConnection Error: %@", body);
-    id json = [NSJSONSerialization JSONObjectWithData:connection.data options:0 error:nil];
+    NSDictionary *json;
+    if (connection.data != nil) {
+        json = [NSJSONSerialization JSONObjectWithData:connection.data options:0 error:nil];
+    }
     NSInteger code = 400;
-    if (json[@"error"]) {
+    if (json && json[@"error"]) {
         if ([json[@"error"] isEqualToString:@"missing_email"]) {
-            error = [NSError errorWithDomain:@""
+            error = [NSError errorWithDomain:error.domain
                                         code:402
-                                    userInfo:@{NSLocalizedDescriptionKey : json[@"error_description"]}];
-        } 
+                                    userInfo:@{NSLocalizedDescriptionKey : json[@"error_description"] ?: @"There was an error logging in"}];
+        } else {
+            error = [NSError errorWithDomain:error.domain
+                                        code:error.code
+                                    userInfo:@{NSLocalizedDescriptionKey : json[@"error_description"] ?: @"There was an error logging in"}];
+        }
+    } else {
+        error = [NSError errorWithDomain:error.domain
+                                    code:error.code
+                                userInfo:@{NSLocalizedDescriptionKey : @"There was an error logging in"}];
     }
 
     
