@@ -468,6 +468,45 @@ NSString * const NXOAuth2ClientConnectionContextTokenRefresh = @"tokenRefresh";
     authConnection.context = NXOAuth2ClientConnectionContextTokenRequest;
 }
 
+- (void)authenticateFromExternalProviderWithToken:(NSString *)token andEmail:(NSString*)email
+{
+    NSAssert1(!authConnection, @"authConnection already running with: %@", authConnection);
+    
+    NSMutableURLRequest *tokenRequest = [NSMutableURLRequest requestWithURL:tokenURL];
+    [tokenRequest setHTTPMethod:self.tokenRequestHTTPMethod];
+    [authConnection cancel];  // just to be sure
+    
+    self.authenticating = YES;
+    
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                                       @"external", @"grant_type",
+                                       clientId, @"client_id",
+                                       clientSecret, @"client_secret",
+                                       @"Facebook", @"external_provider",
+                                       token,@"external_token",
+                                       nil];
+    [parameters setObject:email forKey:@"email"];
+    if (self.desiredScope) {
+        [parameters setObject:[[self.desiredScope allObjects] componentsJoinedByString:@" "] forKey:@"scope"];
+    }
+    
+    if (self.additionalAuthenticationParameters) {
+        [parameters addEntriesFromDictionary:self.additionalAuthenticationParameters];
+    }
+    
+    if (self.customHeaderFields) {
+        [self.customHeaderFields enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *obj, BOOL *stop) {
+            [tokenRequest addValue:obj forHTTPHeaderField:key];
+        }];
+    }
+    
+    authConnection = [[NXOAuth2Connection alloc] initWithRequest:tokenRequest
+                                               requestParameters:parameters
+                                                     oauthClient:self
+                                                        delegate:self];
+    authConnection.context = NXOAuth2ClientConnectionContextTokenRequest;
+}
+
 // Assertion
 - (void)authenticateWithAssertionType:(NSURL *)anAssertionType assertion:(NSString *)anAssertion;
 {
@@ -572,7 +611,16 @@ NSString * const NXOAuth2ClientConnectionContextTokenRefresh = @"tokenRefresh";
 {
     NSString *body = [[NSString alloc] initWithData:connection.data encoding:NSUTF8StringEncoding];
     NSLog(@"oauthConnection Error: %@", body);
-    
+    id json = [NSJSONSerialization JSONObjectWithData:connection.data options:0 error:nil];
+    NSInteger code = 400;
+    if (json[@"error"]) {
+        if ([json[@"error"] isEqualToString:@"missing_email"]) {
+            error = [NSError errorWithDomain:@""
+                                        code:402
+                                    userInfo:@{NSLocalizedDescriptionKey : json[@"error_description"]}];
+        } 
+    }
+
     
     if (connection == authConnection) {
         self.authenticating = NO;
