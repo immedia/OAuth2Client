@@ -409,51 +409,58 @@ NSString *const kNXOAuth2AccountStoreAccountType = @"kNXOAuth2AccountStoreAccoun
 }
 
 #pragma mark Handle OAuth Redirects
+- (BOOL)handleRedirectURL:(NSURL *)aURL
+{
+    return [self handleRedirectURL:aURL error:nil];
+}
 
-- (BOOL)handleRedirectURL:(NSURL *)aURL;
+- (BOOL)handleRedirectURL:(NSURL *)aURL error: (NSError**) error
 {
     __block NSURL *fixedRedirectURL = nil;
     NSSet *accountTypes;
 
     @synchronized(self.configurations) {
         accountTypes = [self.configurations keysOfEntriesPassingTest:^(id key, id obj, BOOL *stop) {
-          NSDictionary *configuration = obj;
-          NSURL *redirectURL =
-              [configuration objectForKey:kNXOAuth2AccountStoreConfigurationRedirectURL];
-          if ([[[aURL absoluteString] lowercaseString]
-                  hasPrefix:[[redirectURL absoluteString] lowercaseString]]) {
+            NSDictionary *configuration = obj;
+            NSURL *redirectURL = [configuration objectForKey:kNXOAuth2AccountStoreConfigurationRedirectURL];
+            if ( [[[aURL absoluteString] lowercaseString] hasPrefix:[[redirectURL absoluteString] lowercaseString]]) {
 
-              // WORKAROUND: The URL which is passed to this method may be lower case also the
-              // scheme is registered in camel case. Therefor replace the prefix with the stored
-              // redirectURL.
-              if (fixedRedirectURL == nil) {
-                  if ([aURL.scheme isEqualToString:redirectURL.scheme]) {
-                      fixedRedirectURL = aURL;
-                  } else {
-                      NSRange prefixRange;
-                      prefixRange.location = 0;
-                      prefixRange.length = [redirectURL.absoluteString length];
-                      fixedRedirectURL = [NSURL
-                          URLWithString:[aURL.absoluteString
-                                            stringByReplacingCharactersInRange:
-                                                prefixRange withString:redirectURL.absoluteString]];
-                  }
-              }
+                // WORKAROUND: The URL which is passed to this method may be lower case also the scheme is registered in camel case. Therefor replace the prefix with the stored redirectURL.
+                if (fixedRedirectURL == nil) {
+                    fixedRedirectURL = [self fixRedirectURL: aURL storedURL:redirectURL];
+                }
 
-              return YES;
-          } else {
-              return NO;
-          }
+                return YES;
+            } else {
+                return NO;
+            }
         }];
     }
 
     for (NSString *accountType in accountTypes) {
         NXOAuth2Client *client = [self pendingOAuthClientForAccountType:accountType];
-        if ([client openRedirectURL:fixedRedirectURL]) {
+        if ([client openRedirectURL:fixedRedirectURL error:error]) {
             return YES;
         }
     }
     return NO;
+}
+
+
+-(NSURL*) fixRedirectURL: (NSURL*) incomingURL storedURL: (NSURL*) redirectURL
+{
+    NSURL *fixedRedirectURL;
+    if ([incomingURL.scheme isEqualToString:redirectURL.scheme]) {
+        fixedRedirectURL = incomingURL;
+    } else {
+        NSRange prefixRange;
+        prefixRange.location = 0;
+        prefixRange.length = [redirectURL.absoluteString length];
+        fixedRedirectURL = [NSURL URLWithString:[incomingURL.absoluteString
+             stringByReplacingCharactersInRange:prefixRange
+                                     withString:redirectURL.absoluteString]];
+    }
+    return fixedRedirectURL;
 }
 
 #pragma mark OAuthClient to AccountType Relation
@@ -591,7 +598,6 @@ NSString *const kNXOAuth2AccountStoreAccountType = @"kNXOAuth2AccountStoreAccoun
             }
         }
     }
-
     foundAccount.accessToken = client.accessToken;
     NSDictionary *userInfo =
         [NSDictionary dictionaryWithObject:foundAccount
@@ -601,6 +607,15 @@ NSString *const kNXOAuth2AccountStoreAccountType = @"kNXOAuth2AccountStoreAccoun
         postNotificationName:NXOAuth2AccountStoreAccountsDidChangeNotification
                       object:self
                     userInfo:userInfo];
+    if (foundAccount) {
+        foundAccount.accessToken = client.accessToken;
+        NSDictionary *userInfo = [NSDictionary dictionaryWithObject: foundAccount
+                                                             forKey: NXOAuth2AccountStoreNewAccountUserInfoKey];
+        
+        [[NSNotificationCenter defaultCenter] postNotificationName:NXOAuth2AccountStoreAccountsDidChangeNotification
+                                                            object:self
+                                                          userInfo:userInfo];
+    }
 }
 
 - (void)addAccount:(NXOAuth2Account *)account;
